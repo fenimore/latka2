@@ -1,8 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
-//#![allow(non_snake_case)]
 #![allow(unused_variables)]
-//#![feature(bufreader_buffer)]
 use std::{io, fs, thread, env};
 use std::fs::{OpenOptions, File};
 use std::io::{BufReader, BufWriter, Write, Read, BufRead, SeekFrom, Seek};
@@ -67,8 +65,6 @@ pub struct Index {
     mmap: MmapMut,
     // TODO: readwrite mutex
 }
-
-
 
 impl Index {
     pub fn new(mut path: PathBuf, bytes: u64, base_offset: Offset) -> io::Result<Index> {
@@ -141,8 +137,7 @@ pub struct Segment {
     max_bytes: u64,
     writer: Option<File>,
     reader: Option<File>,
-    // log: File, underlying FD
-    // index: Index,
+    index: Index,
     // TODO: add mutex
 }
 
@@ -161,14 +156,17 @@ impl Segment {
         let log_reader = OpenOptions::new().read(true).open(log_path)?;
         let size = log_writer.metadata()?.len();
 
-        Ok(Segment {
-            base_offset: base_offset,
-            next_offset: base_offset,
-            position: size, // file size
-            writer: Some(log_writer),
-            reader: Some(log_reader),
-            max_bytes: max_bytes,
-        })
+        Ok(
+            Segment {
+                base_offset: base_offset,
+                next_offset: base_offset,
+                position: size, // file size
+                writer: Some(log_writer),
+                reader: Some(log_reader),
+                max_bytes: max_bytes,
+                index: log_index,
+            }
+        )
     }
 }
 
@@ -240,7 +238,7 @@ mod tests {
         let mut index = Index::new(PathBuf::from(tmp.path()), 16, 0).unwrap();
         index.write_entry(Entry{offset: 1, position: 16}).unwrap();
         index.write_entry(Entry{offset: 2, position: 54}).unwrap();
-        index.write_entry(Entry{offset: 3, position: 62}).is_err();
+        index.write_entry(Entry{offset: 3, position: 62}).unwrap();
     }
 
     #[test]
