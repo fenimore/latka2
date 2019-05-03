@@ -1,28 +1,25 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-use std::{io, fs, thread, env};
+// #![allow(dead_code)]
+// #![allow(unused_imports)]
+// #![allow(unused_variables)]
+use std::{io};
 use std::cmp::{Ord, Ordering, PartialOrd, PartialEq};
 use std::fs::{OpenOptions, File};
-use std::io::{BufReader, BufWriter, Write, Read, BufRead, SeekFrom, Seek};
-use std::io::prelude::*;
+use std::io::{BufWriter, Write, Read, SeekFrom, Seek};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::collections::BinaryHeap;
+// use std::sync::{Arc, Mutex};
 
-use byteorder::{ByteOrder, BigEndian, WriteBytesExt, ReadBytesExt};
-use memmap::{MmapMut, MmapOptions};
-
-use crate::Offset;
+use crate::{Offset};
 use crate::index::{Index, Entry};
 
 
-const MAX_BYTES: u64 = 1024 * 1024 * 1;
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+pub struct MaxBytes(pub u64, pub u64);
 
-pub struct InactiveSegment(PathBuf, Offset, u64);
+#[derive(Debug)]
+pub struct InactiveSegment(PathBuf, Offset, MaxBytes);
 
 impl InactiveSegment {
-    pub fn new(path: PathBuf, offset: Offset, max_bytes: u64) -> InactiveSegment {
+    pub fn new(path: PathBuf, offset: Offset, max_bytes: MaxBytes) -> InactiveSegment {
         InactiveSegment(path, offset, max_bytes)
     }
     pub fn activate(&self) -> io::Result<Segment> {
@@ -36,7 +33,7 @@ impl PartialEq for InactiveSegment {
     fn eq(&self, other: &Self) -> bool { self.1 == other.1 }
 }
 impl Ord for InactiveSegment {
-    fn cmp(&self, other: &Self) -> Ordering { self.1.cmp(&other.1) }
+    fn cmp(&self, other: &Self) -> Ordering { self.1.cmp(&other.1) }  // .reverse()
 }
 impl PartialOrd for InactiveSegment {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
@@ -44,20 +41,19 @@ impl PartialOrd for InactiveSegment {
 
 #[derive(Debug)]
 pub struct Segment {
-    base_offset: Offset,
+    pub base_offset: Offset,
     next_offset: Offset, // TODO: put a mutex :(
     position: Offset,
-    max_bytes: u64,
+    max_bytes: MaxBytes,
     path: PathBuf,
     writer: File,
     reader: File,
     index: Index,
     suffix: String,
-    // TODO: add mutex
 }
 
 impl Segment {
-    pub fn new(path: &mut PathBuf, base_offset: Offset, max_bytes: u64) -> io::Result<Segment> {
+    pub fn new(path: &mut PathBuf, base_offset: Offset, max_bytes: MaxBytes) -> io::Result<Segment> {
         // TODO: atm new performs double duty as `new` and `load`,
         // for load to work, I'd need to set the base_offset from whatever
         // the index tells me to do. Unless I go the jocko route and
@@ -70,7 +66,7 @@ impl Segment {
 
         let mut index_path = path.clone();
         index_path.pop();
-        let log_index = Index::new(index_path.clone(), base_offset, 0)?;
+        let log_index = Index::new(index_path.clone(), base_offset, max_bytes.1)?;
 
         Ok(
             Segment {
@@ -79,7 +75,7 @@ impl Segment {
                 position: size, // file size
                 writer: log_writer,
                 reader: log_reader,
-                max_bytes: if max_bytes > 0 { max_bytes } else { MAX_BYTES },
+                max_bytes: max_bytes,
                 index: log_index,
                 path: path.clone(),
                 suffix: format!("{:0>20}", base_offset),
@@ -102,7 +98,7 @@ impl Segment {
 
     pub fn is_full(&self) -> bool {
         // TODO: add mutex
-        return self.position >= self.max_bytes
+        return self.position >= self.max_bytes.0
     }
 
     // TODO: build index if loading the segment and rebuilding index ¯\_(ツ)_/¯
@@ -139,7 +135,7 @@ mod tests {
     fn it_is_full_when_full() {
         let tmp = tempdir().unwrap();
         let path = tmp.path().to_path_buf();
-        let mut segment = Segment::new(&mut path.clone(), 0, 16).unwrap();
+        let mut segment = Segment::new(&mut path.clone(), 0, MaxBytes(16, 64)).unwrap();
         let _ = segment.write("YELLOW ".as_bytes()).unwrap();
         assert!(!segment.is_full(), "not full yet");
         let _ = segment.write("SUBMARINE".as_bytes()).unwrap();
@@ -155,7 +151,7 @@ mod tests {
     fn it_writes() {
         let tmp = tempdir().unwrap();
         let mut path = tmp.path().to_path_buf();
-        let mut segment = Segment::new(&mut path.clone(), 0, 0).unwrap();
+        let mut segment = Segment::new(&mut path.clone(), 0, MaxBytes(64, 64)).unwrap();
         let n = segment.write("YELLOW SUBMARINE".as_bytes()).unwrap();
         let result = {
             let mut buf = [0; 16];
@@ -170,24 +166,22 @@ mod tests {
         assert_eq!(segment.next_offset, 1, "increment next offset");
         assert_eq!(segment.position, 16, "position");
         assert_eq!(segment.base_offset, 0, "base_offset");
-        assert_eq!(segment.max_bytes, MAX_BYTES, "max_bytes");
+        assert_eq!(segment.max_bytes, MaxBytes(64, 64), "max_bytes");
     }
 
     #[test]
     fn default_new_segment() {
         let tmp = tempdir().unwrap();
         let mut path = tmp.path().to_path_buf().clone();
-        let segment = Segment::new(&mut path, 0, 0).unwrap();
+        let segment = Segment::new(&mut path, 0, MaxBytes(64, 64)).unwrap();
 
         // TODO test writer and reader file permissions
-        assert_eq!(segment.index.len().unwrap(), 10485760, "file size");
+        assert_eq!(segment.index.len().unwrap(), 64, "file size");
         assert!(segment.path.exists(), "log file exists");
         assert!(segment.index.path_buf().exists(), "index file exists");
         assert_eq!(segment.position, 0, "position");
         assert_eq!(segment.base_offset, 0, "base_offset");
-        assert_eq!(segment.max_bytes, MAX_BYTES, "max_bytes");
+        assert_eq!(segment.max_bytes, MaxBytes(64, 64), "max_bytes");
         assert_eq!(segment.next_offset, 0, "next_offset");
     }
-
-
 }

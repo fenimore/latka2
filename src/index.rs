@@ -1,29 +1,23 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-use std::{io, fs, thread, env};
-use std::cmp::{Ord, Ordering, PartialOrd, PartialEq};
+// #![allow(dead_code)]
+// #![allow(unused_imports)]
+// #![allow(unused_labels)]
+// #![allow(unused_variables)]
+use std::{io};
 use std::fs::{OpenOptions, File};
-use std::io::{BufReader, BufWriter, Write, Read, BufRead, SeekFrom, Seek};
-use std::io::prelude::*;
+use std::io::prelude::{Read, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::collections::BinaryHeap;
 
-use byteorder::{ByteOrder, BigEndian, WriteBytesExt, ReadBytesExt};
+use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 use memmap::{MmapMut, MmapOptions};
 
-use crate::Offset;
+use crate::{Offset};
 
 fn idx_name(base_offset: Offset) -> PathBuf {
     PathBuf::from(format!("{:0>20}.index", base_offset))
 }
 
-// const OFFSET_WIDTH: u32 = 4;
-// const OFFSET_OFFSET: u32 = 0;
-// const POSITION_WIDTH: u32 = 4;
-// const POSITION_OFFSET: u32 = 4;
 const ENTRY_WIDTH: u32 = 8;
+
 
 #[derive(Debug, PartialEq)]
 pub struct Entry{
@@ -62,7 +56,7 @@ impl RelativeEntry {
 pub struct Index {
     // options
     path: PathBuf,
-    bytes: u64,
+    max_bytes: u64,
     base_offset: Offset,
     // attributes
     file: File,
@@ -73,18 +67,17 @@ pub struct Index {
 }
 
 impl Index {
-    pub fn new(mut path: PathBuf, base_offset: Offset, bytes: u64) -> io::Result<Index> {
-        let opt_bytes = if bytes > 0 {bytes} else { 10 * 1024 * 1024 };
+    pub fn new(mut path: PathBuf, base_offset: Offset, max_bytes: u64) -> io::Result<Index> {
         path.push(idx_name(base_offset));
         let file = OpenOptions::new().read(true).write(true).create(true).open(&path)?;
         let size = file.metadata()?.len();
         if size == 0 {
-            file.set_len(opt_bytes)?;
+            file.set_len(max_bytes)?;
         }
 
         let mmap = unsafe { MmapOptions::new().map_mut(&file)? };
         Ok(Index {
-            bytes: opt_bytes,
+            max_bytes: max_bytes,
             path: path,
             base_offset: base_offset,
             file: file,
@@ -163,15 +156,15 @@ mod tests {
     fn it_defaults_new() {
         let tmp = tempdir().unwrap();
 
-        let index = Index::new(PathBuf::from(tmp.path()), 0, 0).unwrap();
+        let index = Index::new(PathBuf::from(tmp.path()), 0, 64).unwrap();
 
         let mut expected_path = PathBuf::from(tmp.path());
         expected_path.push("00000000000000000000.index");
 
         assert_eq!(expected_path, index.path, "path matches expectations");
         assert!(index.path.exists(), "file exists");
-        assert_eq!(index.file.metadata().unwrap().len(), 10485760, "file size");
-        assert_eq!(index.bytes, 10485760, "bytes");
+        assert_eq!(index.file.metadata().unwrap().len(), 64, "file size");
+        assert_eq!(index.max_bytes, 64, "bytes");
         assert_eq!(index.base_offset, 0, "base_offset");
         assert_eq!(index.position, 0, "position");
     }
