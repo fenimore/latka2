@@ -4,6 +4,7 @@
 pub mod segment;
 pub mod commitlog;
 pub mod index;
+pub mod message;
 
 pub type Offset = u64;
 

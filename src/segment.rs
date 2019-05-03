@@ -16,6 +16,138 @@ use crate::index::{Index, Entry};
 pub struct MaxBytes(pub u64, pub u64);
 
 #[derive(Debug)]
+pub struct OpenSegment {
+    log_reader: File,
+    log_writer: File,
+    log_index: Index,
+}
+
+
+impl Write for OpenSegment {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut buf_writer = BufWriter::new(&self.log_writer);
+        let n = buf_writer.write(buf)?;
+        Ok(n)
+    }
+    fn flush(&mut self) -> io::Result<()> { self.log_writer.flush() }
+}
+
+impl Read for OpenSegment {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> { self.log_reader.read(buf) }
+}
+
+impl Seek for OpenSegment {
+    fn seek(&mut self, offset: SeekFrom) -> io::Result<u64> { return self.log_reader.seek(offset) }
+}
+
+
+
+#[derive(Debug, Clone)]
+pub struct SegmentMeta {
+    segment_path: PathBuf,
+    index_path: PathBuf,
+    base_offset: Offset,
+    next_offset: Offset,
+    position: Offset,
+    max_bytes: MaxBytes,
+}
+
+
+impl SegmentMeta {
+    pub fn load(path: PathBuf, max_bytes: MaxBytes) -> Option<SegmentMeta> {
+        let ext = path.extension().unwrap().to_string_lossy();
+        if !ext.contains("log") {
+            return None
+        }
+        let stem = path.file_stem().unwrap().to_string_lossy();
+        let offset = match stem.parse::<Offset>() {
+            Ok(off) => off,
+            _ => {
+                // TODO: log errors
+                return None
+            },
+        };
+        let mut base_path = path.clone();
+        base_path.pop();
+        let mut meta = SegmentMeta::new(base_path, offset, max_bytes);
+        let open_segment = meta.open().ok()?;
+        meta.position = meta.size();
+        //meta.next_offset =
+
+        Some(meta)
+    }
+
+    pub fn new(base_path: PathBuf, base_offset: Offset, max_bytes: MaxBytes) -> SegmentMeta {
+        let mut log_path = base_path.clone();
+        let mut index_path = base_path.clone();
+        log_path.push(format!("{:0>20}.log", base_offset));
+        index_path.push(format!("{:0>20}.index", base_offset));
+        SegmentMeta{
+            segment_path: log_path,
+            index_path: index_path,
+            base_offset: base_offset,
+            next_offset: base_offset + 1,
+            position: base_offset,
+            max_bytes: max_bytes,
+        }
+    }
+
+    pub fn open(&self) -> io::Result<(OpenSegment)> {
+        let log_writer = OpenOptions::new().create(true).write(true)
+            .append(true).open(self.segment_path.clone())?;
+        let log_reader = OpenOptions::new().read(true).open(self.segment_path.clone())?;
+        let log_index = Index::open(self.index_path.clone(), self.base_offset, self.max_bytes.1)?;
+
+        Ok(OpenSegment{log_reader: log_reader, log_writer: log_writer, log_index: log_index})
+    }
+
+    pub fn size(&self) -> u64 {
+        match self.open().ok() {
+            Some(seg) => seg.log_writer.metadata().unwrap().len(),
+            None => 0,
+        }
+    }
+
+    pub fn write_index_entry(&mut self, entry: Entry) -> io::Result<()> {
+        self.open()?.log_index.write_entry(entry)
+    }
+
+}
+
+
+impl Write for SegmentMeta {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let open_segment = self.open()?;
+        let mut buf_writer = BufWriter::new(&open_segment.log_writer);
+        let n = buf_writer.write(buf)?;
+        self.next_offset += 1;
+        self.position += n as u64;
+        Ok(n)
+    }
+    fn flush(&mut self) -> io::Result<()> { self.open()?.log_writer.flush() }
+}
+
+impl Read for SegmentMeta {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> { self.open()?.log_reader.read(buf) }
+}
+
+impl Seek for SegmentMeta {
+    fn seek(&mut self, offset: SeekFrom) -> io::Result<u64> { return self.open()?.log_reader.seek(offset) }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+#[derive(Debug)]
 pub struct InactiveSegment(PathBuf, Offset, MaxBytes);
 
 impl InactiveSegment {

@@ -77,12 +77,21 @@ pub struct CommitLog {
 
 
 impl CommitLog {
+    // TODO: rename this to new_or_latest
     pub fn new(name: String, path: &mut PathBuf, max_bytes: MaxBytes) -> io::Result<CommitLog> {
         // TODO: refactor and split up into load and new
         path.push(name.clone());
         fs::create_dir_all(path.clone())?;
 
-        let (active, segments) = CommitLog::open_latest(path.clone(), max_bytes)?;
+        let mut segments = CommitLog::open(path.clone(), max_bytes)?;
+        let latest_segment = segments.pop();
+
+        let active = match latest_segment {
+            Some(inactive_segment) => { inactive_segment.activate()? },
+            None => {
+                Segment::new(&mut path.clone(), 0, max_bytes)?
+            },
+        };
         Ok(
             CommitLog {
                 path: path.to_path_buf(),
@@ -92,21 +101,6 @@ impl CommitLog {
                 active_segment: active,
             }
         )
-    }
-
-    pub fn open_latest(path: PathBuf, max_bytes: MaxBytes) -> io::Result<(Segment, BinaryHeap<InactiveSegment>)> {
-        let mut segments = CommitLog::open(path, max_bytes)?;
-        let latest_segment = segments.pop();
-
-        let active = match latest_segment {
-            Some(inactive_segment) => { inactive_segment.activate()? },
-            None => {
-                let mut partition_path = path.to_path_buf().clone();
-                Segment::new(&mut partition_path, 0, max_bytes)?
-            },
-        };
-
-        Ok((active, segments))
     }
 
     pub fn open(path: PathBuf, max_bytes: MaxBytes) -> io::Result<BinaryHeap<InactiveSegment>> {
@@ -129,6 +123,8 @@ impl CommitLog {
         }
         Ok(segments)
     }
+
+
 
 
     // pub fn new_reader(offset: Offset, path: PathBuf, max_bytes: MaxBytes) -> io::Result<()> {

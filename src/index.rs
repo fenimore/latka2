@@ -67,7 +67,30 @@ pub struct Index {
 }
 
 impl Index {
+    pub fn open(path: PathBuf, base_offset: Offset, max_bytes: u64) -> io::Result<Index> {
+        let file = OpenOptions::new().read(true).write(true).create(true).open(&path)?;
+        let size = file.metadata()?.len();
+        if size == 0 {
+            file.set_len(max_bytes)?;
+        }
+
+        let mmap = unsafe { MmapOptions::new().map_mut(&file)? };
+        Ok(Index {
+            max_bytes: max_bytes,
+            path: path,
+            base_offset: base_offset,
+            file: file,
+            position: size,
+            mmap: mmap,
+        })
+    }
+
+
     pub fn new(mut path: PathBuf, base_offset: Offset, max_bytes: u64) -> io::Result<Index> {
+        if max_bytes % ENTRY_WIDTH as u64 != 0 {
+            return Err(io::Error::new(io::ErrorKind::Other, "max_bytes must be divisible by 8"))
+        }
+
         path.push(idx_name(base_offset));
         let file = OpenOptions::new().read(true).write(true).create(true).open(&path)?;
         let size = file.metadata()?.len();
@@ -85,6 +108,7 @@ impl Index {
             mmap: mmap,
         })
     }
+
     pub fn path_buf(&self) -> PathBuf {
         self.path.clone()
     }
@@ -119,6 +143,15 @@ impl Index {
         let end = off + ENTRY_WIDTH as usize;
         buf.copy_from_slice(&self.mmap[off..end]);
         Ok(ENTRY_WIDTH as usize)
+    }
+
+    // pub fn find_latest_entry(&mut self) -> io::Result<Entry> {
+    //     self.mmap.into_iter().chunks
+    //     self.read_entry(offset * ENTRY_WIDTH as u64)
+    // }
+
+    pub fn read_log_entry(&mut self, offset: Offset) -> io::Result<Entry> {
+        self.read_entry(offset * ENTRY_WIDTH as u64)
     }
 
     pub fn read_entry(&mut self, offset: Offset) -> io::Result<Entry> {
