@@ -8,7 +8,6 @@ use std::io::prelude::*;
 use std::path::PathBuf;
 // use std::sync::{Arc, Mutex};
 use std::iter::FromIterator;
-use std::collections::BinaryHeap;
 
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 
@@ -24,7 +23,7 @@ pub struct Partition {
     max_bytes: MaxBytes,
     // attributes
     name: String,
-    segments: BinaryHeap<SegmentMeta>,
+    segments: Vec<SegmentMeta>,
     active_segment: SegmentMeta, // TODO: use arc to hold segments and mutexes
 }
 
@@ -35,7 +34,7 @@ impl Partition {
         path.push(name.clone());
         fs::create_dir_all(path.clone())?;
         let active = SegmentMeta::new(path.clone(), 0, max_bytes);
-        let segments: BinaryHeap<SegmentMeta> = BinaryHeap::new();
+        let segments: Vec<SegmentMeta> = Vec::new();
         Ok(
             Partition {
                 name: name,
@@ -66,8 +65,8 @@ impl Partition {
         )
     }
 
-    pub fn scan(path: PathBuf, max_bytes: MaxBytes) -> io::Result<BinaryHeap<SegmentMeta>> {
-        let mut segments: BinaryHeap<SegmentMeta> = BinaryHeap::new();
+    pub fn scan(path: PathBuf, max_bytes: MaxBytes) -> io::Result<Vec<SegmentMeta>> {
+        let mut segments: Vec<SegmentMeta> = Vec::new();
         for entry in fs::read_dir(path.clone())? {
             let log_path = entry?.path();
             let segment_meta = match SegmentMeta::load(log_path, max_bytes) {
@@ -76,6 +75,7 @@ impl Partition {
             };
             segments.push(segment_meta);
         }
+        segments.sort_unstable();
         Ok(segments)
     }
 
