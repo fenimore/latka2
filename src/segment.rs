@@ -46,7 +46,7 @@ impl Seek for OpenSegment {
 pub struct SegmentMeta {
     segment_path: PathBuf,
     index_path: PathBuf,
-    base_offset: Offset,
+    pub base_offset: Offset,
     next_offset: Offset,
     position: Offset,
     max_bytes: MaxBytes,
@@ -55,24 +55,35 @@ pub struct SegmentMeta {
 
 impl SegmentMeta {
     pub fn load(path: PathBuf, max_bytes: MaxBytes) -> Option<SegmentMeta> {
-        let ext = path.extension().unwrap().to_string_lossy();
-        if !ext.contains("log") {
-            return None
-        }
-        let stem = path.file_stem().unwrap().to_string_lossy();
+        if path.is_dir() { return None }
+        let ext = match path.extension() {
+            Some(ext) => {
+                ext.to_string_lossy()
+            },
+            None => { return None }
+        };
+        if !ext.contains("log") { return None }
+        let stem = match path.file_stem() {
+            Some(stem) => { stem.to_string_lossy() },
+            None => { return None }
+        };
         let offset = match stem.parse::<Offset>() {
             Ok(off) => off,
-            _ => {
-                // TODO: log errors
-                return None
-            },
+            _ => { return None },
         };
+
         let mut base_path = path.clone();
         base_path.pop();
         let mut meta = SegmentMeta::new(base_path, offset, max_bytes);
         let mut open_segment = meta.open().ok()?;
         meta.position = meta.size();
-        meta.next_offset = open_segment.log_index.find_latest_entry().ok()?.offset + 1;
+        let entry = open_segment.log_index.find_latest_entry().ok()?;
+
+        meta.next_offset = if open_segment.log_index.is_empty() {
+            entry.offset
+        } else {
+            entry.offset + 1
+        };
         Some(meta)
     }
 
@@ -86,7 +97,7 @@ impl SegmentMeta {
             index_path: index_path,
             base_offset: base_offset,
             next_offset: base_offset,
-            position: base_offset,
+            position: 0,
             max_bytes: max_bytes,
         }
     }
@@ -313,6 +324,10 @@ mod tests {
     fn it_loads_existing_segment_meta() {
         let tmp = tempdir().unwrap();
         let mut path = tmp.path().to_path_buf().clone();
+
+        let root_dir = SegmentMeta::load(path.clone(), MaxBytes(64, 64));
+        assert!(root_dir.is_none(), "Empty directory");
+
         path.push("00000000000000000000.log");
         let segment = SegmentMeta::load(path, MaxBytes(64, 64)).unwrap();
         assert_eq!(segment.position, 0, "position");
@@ -321,7 +336,9 @@ mod tests {
         assert_eq!(segment.next_offset, 1, "next_offset");
     }
 
+    ////////////////////
     // Legacy Segments:
+    ///////////////////
     #[test]
     fn it_is_full_when_full() {
         let tmp = tempdir().unwrap();

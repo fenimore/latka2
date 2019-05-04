@@ -13,7 +13,7 @@ use std::collections::BinaryHeap;
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 
 use crate::Offset;
-
+use crate::segment::MaxBytes;
 
 const SIZE: u64 = 8;
 const MSG_HEADER_LEN: u64 = 12;
@@ -59,5 +59,37 @@ impl Message {
         buf.append(&mut self.payload.to_vec());
 
         Ok(buf)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+    use super::*;
+
+    #[test]
+    fn new_message() {
+        let message = Message::new(1, 3, &[0, 1, 2, 3]);
+        assert_eq!(message.offset, 1);
+        assert_eq!(message.position, 3);
+        assert_eq!(message.payload, vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn message_from_vec() {
+        let mut raw = vec![0u8, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 1, 2, 3];
+        let message = Message::from_vec(&mut raw);
+        assert_eq!(message.offset, 1);
+        assert_eq!(message.position, 3);
+        assert_eq!(message.payload, vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn message_to_vec() {
+        let message = Message::new(1, 3, &[0, 1, 2, 3]);
+        let res = message.to_vec().unwrap();
+
+        assert_eq!(res, vec![0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 1, 2, 3]);
     }
 }

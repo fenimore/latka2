@@ -19,7 +19,7 @@ fn idx_name(base_offset: Offset) -> PathBuf {
 const ENTRY_WIDTH: u32 = 8;
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Entry{
     pub offset: Offset,
     pub position: Offset,
@@ -30,7 +30,7 @@ impl Entry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct RelativeEntry{
     offset: u32,
     position: u32,
@@ -75,21 +75,26 @@ impl Index {
         }
 
         let mmap = unsafe { MmapOptions::new().map_mut(&file)? };
-        Ok(Index {
+        let mut index = Index {
             max_bytes: max_bytes,
             path: path,
             base_offset: base_offset,
             file: file,
-            position: size,
+            position: 0,
             mmap: mmap,
-        })
+        };
+        let entry = index.find_latest_entry()?;
+        index.position = entry.position;
+        Ok(index)
     }
-
 
     pub fn new(mut path: PathBuf, base_offset: Offset, max_bytes: u64) -> io::Result<Index> {
         if max_bytes % ENTRY_WIDTH as u64 != 0 {
             return Err(io::Error::new(io::ErrorKind::Other, "max_bytes must be divisible by 8"))
+        } else if max_bytes < 16 {
+            return Err(io::Error::new(io::ErrorKind::Other, "max_bytes must 16 or greater"))
         }
+
 
         path.push(idx_name(base_offset));
         let file = OpenOptions::new().read(true).write(true).create(true).open(&path)?;
@@ -104,7 +109,7 @@ impl Index {
             path: path,
             base_offset: base_offset,
             file: file,
-            position: size,
+            position: 0,
             mmap: mmap,
         })
     }
@@ -116,11 +121,14 @@ impl Index {
         let meta = self.file.metadata()?;
         Ok(meta.len())
     }
+    pub fn is_empty(&self) -> bool {
+        // if the first two entries are zeroes, then the index is "empty"
+        self.mmap[0..16] == [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
     pub fn write_at(&mut self, relative_entry: RelativeEntry, offset: Offset) -> io::Result<()> {
         let mut buf = vec![];
         buf.write_u32::<BigEndian>(relative_entry.offset)?;
         buf.write_u32::<BigEndian>(relative_entry.position)?;
-
         self.mmap[offset as usize..offset as usize + ENTRY_WIDTH as usize].copy_from_slice(&buf);
         Ok(())
     }
@@ -128,7 +136,7 @@ impl Index {
     pub fn write_entry(&mut self, entry: Entry) -> io::Result<()> {
         let relative_entry = RelativeEntry::new(entry, self.base_offset);
         // write_at
-        self.write_at(relative_entry, self.position)?;
+        self.write_at(relative_entry, relative_entry.offset as Offset * ENTRY_WIDTH as Offset)?;
         self.position = self.position + ENTRY_WIDTH as Offset;
 
         Ok(())
@@ -151,7 +159,6 @@ impl Index {
         let index_count = end / 8;
 
         let mut latest_entry = Entry{offset: 0, position: 0};
-
         for x in 0..index_count {
             let entry = self.read_log_entry(x)?;
             if entry.offset >= latest_entry.offset {
