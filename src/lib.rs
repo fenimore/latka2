@@ -2,7 +2,6 @@
 // #![allow(unused_imports)]
 // #![allow(unused_variables)]
 pub mod segment;
-pub mod commitlog;
 pub mod index;
 pub mod message;
 pub mod partition;

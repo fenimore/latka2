@@ -231,8 +231,8 @@ mod tests {
         let mut buffer = [0; 32];
         index.file.read(&mut buffer).unwrap();
         assert_eq!(buffer, [
-            0, 0, 0, 1, 0, 0, 0, 16,
             0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 1, 0, 0, 0, 16,
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
         ]);
