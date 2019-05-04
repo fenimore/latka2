@@ -21,8 +21,8 @@ const ENTRY_WIDTH: u32 = 8;
 
 #[derive(Debug, PartialEq)]
 pub struct Entry{
-    offset: Offset,
-    position: Offset,
+    pub offset: Offset,
+    pub position: Offset,
 }
 impl Entry {
     pub fn new(offset: Offset, position: u64) -> Entry {
@@ -145,10 +145,22 @@ impl Index {
         Ok(ENTRY_WIDTH as usize)
     }
 
-    // pub fn find_latest_entry(&mut self) -> io::Result<Entry> {
-    //     self.mmap.into_iter().chunks
-    //     self.read_entry(offset * ENTRY_WIDTH as u64)
-    // }
+    pub fn find_latest_entry(&mut self) -> io::Result<Entry> {
+        // super naive and dumb "search" for latest entry
+        let end = self.len()?;
+        let index_count = end / 8;
+
+        let mut latest_entry = Entry{offset: 0, position: 0};
+
+        for x in 0..index_count {
+            let entry = self.read_log_entry(x)?;
+            if entry.offset >= latest_entry.offset {
+                latest_entry.offset = entry.offset;
+                latest_entry.position = entry.position;
+            }
+        };
+        Ok(latest_entry)
+    }
 
     pub fn read_log_entry(&mut self, offset: Offset) -> io::Result<Entry> {
         self.read_entry(offset * ENTRY_WIDTH as u64)
@@ -236,6 +248,22 @@ mod tests {
             0, 0, 0, 2, 0, 0, 0, 62,
             0, 0, 0, 0, 0, 0, 0, 0,
         ]);
+    }
+
+    #[test]
+    fn it_finds_last_entry() {
+        let tmp = tempdir().unwrap();
+        let mut index = Index::new(tmp.path().to_path_buf(), 2, 64).unwrap();
+
+        {
+            index.write_entry(Entry{offset: 2, position: 16}).unwrap();
+            index.write_entry(Entry{offset: 3, position: 54}).unwrap();
+            index.write_entry(Entry{offset: 4, position: 62}).unwrap();
+            index.write_entry(Entry{offset: 5, position: 88}).unwrap();
+        }
+
+        let entry = index.find_latest_entry().unwrap();
+        assert_eq!(entry, Entry{offset: 5, position: 88});
     }
 
     #[test]

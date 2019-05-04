@@ -70,10 +70,9 @@ impl SegmentMeta {
         let mut base_path = path.clone();
         base_path.pop();
         let mut meta = SegmentMeta::new(base_path, offset, max_bytes);
-        let open_segment = meta.open().ok()?;
+        let mut open_segment = meta.open().ok()?;
         meta.position = meta.size();
-        //meta.next_offset =
-
+        meta.next_offset = open_segment.log_index.find_latest_entry().ok()?.offset + 1;
         Some(meta)
     }
 
@@ -86,7 +85,7 @@ impl SegmentMeta {
             segment_path: log_path,
             index_path: index_path,
             base_offset: base_offset,
-            next_offset: base_offset + 1,
+            next_offset: base_offset,
             position: base_offset,
             max_bytes: max_bytes,
         }
@@ -112,6 +111,11 @@ impl SegmentMeta {
         self.open()?.log_index.write_entry(entry)
     }
 
+    pub fn is_full(&self) -> bool {
+        return self.position >= self.max_bytes.0
+    }
+    pub fn newest_offset(&self) -> u64 {self.next_offset}
+    pub fn current_position(&self) -> u64 { self.position }
 }
 
 
@@ -122,6 +126,7 @@ impl Write for SegmentMeta {
         let n = buf_writer.write(buf)?;
         self.next_offset += 1;
         self.position += n as u64;
+
         Ok(n)
     }
     fn flush(&mut self) -> io::Result<()> { self.open()?.log_writer.flush() }
@@ -135,7 +140,17 @@ impl Seek for SegmentMeta {
     fn seek(&mut self, offset: SeekFrom) -> io::Result<u64> { return self.open()?.log_reader.seek(offset) }
 }
 
-
+// Implement ordering for the segment in a commit log's segment list
+impl Eq for SegmentMeta { }
+impl PartialEq for SegmentMeta {
+    fn eq(&self, other: &Self) -> bool { self.base_offset == other.base_offset }
+}
+impl Ord for SegmentMeta {
+    fn cmp(&self, other: &Self) -> Ordering { self.base_offset.cmp(&other.base_offset) }  // .reverse()
+}
+impl PartialOrd for SegmentMeta {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+}
 
 
 
@@ -263,6 +278,50 @@ mod tests {
     use tempfile::tempdir;
     use super::*;
 
+    #[test]
+    fn it_creates_segment_meta() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().to_path_buf().clone();
+        let segment = SegmentMeta::new(path, 0, MaxBytes(64, 64));
+        assert!(!segment.index_path.exists(), "index file doens't exists");
+        assert!(!segment.segment_path.exists(), "log file doesn't exists");
+        assert_eq!(segment.position, 0, "position");
+        assert_eq!(segment.base_offset, 0, "base_offset");
+        assert_eq!(segment.max_bytes, MaxBytes(64, 64), "max_bytes");
+        assert_eq!(segment.next_offset, 0, "next_offset");
+    }
+
+
+    #[test]
+    fn it_can_write_to_log() {
+        let tmp = tempdir().unwrap();
+        let mut path = tmp.path().to_path_buf();
+        let mut segment = SegmentMeta::new(path.clone(), 0, MaxBytes(64, 64));
+        let n = segment.write("YELLOW SUBMARINE".as_bytes()).unwrap();
+        let result = {
+            let mut buf = [0; 16];
+            path.push("00000000000000000000.log");
+            let mut log_file = OpenOptions::new().create(false).read(true).open(path).unwrap();
+            log_file.read_exact(&mut buf).unwrap();
+            buf
+        };
+        assert_eq!(n, 16, "write returns 16");
+        assert_eq!("YELLOW SUBMARINE".as_bytes(), result, "data writes");
+    }
+
+    #[test]
+    fn it_loads_existing_segment_meta() {
+        let tmp = tempdir().unwrap();
+        let mut path = tmp.path().to_path_buf().clone();
+        path.push("00000000000000000000.log");
+        let segment = SegmentMeta::load(path, MaxBytes(64, 64)).unwrap();
+        assert_eq!(segment.position, 0, "position");
+        assert_eq!(segment.base_offset, 0, "base_offset");
+        assert_eq!(segment.max_bytes, MaxBytes(64, 64), "max_bytes");
+        assert_eq!(segment.next_offset, 1, "next_offset");
+    }
+
+    // Legacy Segments:
     #[test]
     fn it_is_full_when_full() {
         let tmp = tempdir().unwrap();
