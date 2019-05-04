@@ -1,54 +1,17 @@
-// #![allow(dead_code)]
-// #![allow(unused_imports)]
-// #![allow(unused_labels)]
-// #![allow(unused_variables)]
 use std::{io};
 use std::fs::{OpenOptions, File};
-use std::io::prelude::{Read, Write};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 use memmap::{MmapMut, MmapOptions};
 
 use crate::{Offset};
+use crate::entry::{Entry, RelativeEntry, ENTRY_WIDTH};
 
 fn idx_name(base_offset: Offset) -> PathBuf {
     PathBuf::from(format!("{:0>20}.index", base_offset))
 }
-
-const ENTRY_WIDTH: u32 = 8;
-
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct Entry{
-    pub offset: Offset,
-    pub position: Offset,
-}
-impl Entry {
-    pub fn new(offset: Offset, position: u64) -> Entry {
-        Entry{ offset: offset, position: position }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct RelativeEntry{
-    offset: u32,
-    position: u32,
-}
-
-impl RelativeEntry {
-    pub fn new(entry: Entry, base_offset: Offset) -> RelativeEntry {
-        RelativeEntry{
-            offset: (entry.offset - base_offset) as u32,
-            position: entry.position as u32,
-        }
-    }
-    pub fn fill(&mut self, entry: &mut Entry, base_offset: Offset) {
-        entry.offset  = base_offset + self.offset as u64;
-        entry.position = self.position as u64;
-    }
-}
-
 
 
 // The Index is a memory mapped `.index` file

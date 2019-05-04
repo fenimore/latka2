@@ -1,7 +1,4 @@
-// #![allow(dead_code)]
-// #![allow(unused_imports)]
-// #![allow(unused_variables)]
-use std::{fs, io};
+use std::{io};
 use std::cmp::{Ord, Ordering, PartialOrd, PartialEq};
 use std::fs::{OpenOptions, File};
 use std::io::{BufWriter, Write, Read, SeekFrom, Seek};
@@ -9,8 +6,8 @@ use std::path::PathBuf;
 // use std::sync::{Arc, Mutex};
 
 use crate::{Offset};
-use crate::index::{Index, Entry};
-
+use crate::index::{Index};
+use crate::entry::{Entry};
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub struct MaxBytes(pub u64, pub u64);
@@ -166,6 +163,7 @@ impl PartialOrd for SegmentMeta {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use tempfile::tempdir;
     use super::*;
 

@@ -14,7 +14,7 @@ use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 
 use crate::Offset;
 use crate::message::{Message};
-use crate::index::{Entry};
+use crate::entry::{Entry};
 use crate::segment::{OpenSegment, SegmentMeta, MaxBytes};
 
 

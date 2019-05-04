@@ -5,6 +5,7 @@ pub mod segment;
 pub mod index;
 pub mod message;
 pub mod partition;
+pub mod entry;
 
 pub type Offset = u64;
 
