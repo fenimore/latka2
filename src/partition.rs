@@ -66,6 +66,7 @@ impl Partition {
     }
 
     pub fn scan(path: PathBuf, max_bytes: MaxBytes) -> io::Result<Vec<SegmentMeta>> {
+        // returns a Vec of SegmentMeta segments, sorted low to high
         let mut segments: Vec<SegmentMeta> = Vec::new();
         for entry in fs::read_dir(path.clone())? {
             let log_path = entry?.path();
@@ -111,7 +112,61 @@ impl Partition {
 
         Ok(self.active_segment.newest_offset())
     }
+
+    pub fn find_segment(&self, offset: Offset) -> Option<SegmentMeta> {
+        // Find the segment a given offset is in (between two base_segments)
+        // the segments are sorted smallest -> largest
+        let cloned_segments = self.segments.clone();
+        let mut peekable_segments = cloned_segments.iter().peekable();
+        loop {
+            let segment = match peekable_segments.next() {
+                Some(seg) => seg,
+                None => break,
+            };
+            if offset < segment.base_offset { break };
+            if let Some(seg) = peekable_segments.peek() {
+                if offset >= seg.base_offset { continue };
+            }
+            return Some(segment.clone());
+        }
+        None
+    }
+    pub fn segments_len(&self) -> usize { self.segments.len() }
 }
+
+pub struct Reader {
+    segments: Vec<SegmentMeta>, // sorted largest to smallest
+    active_segment: SegmentMeta,
+    max_bytes: MaxBytes,
+    offset: Offset,
+}
+
+impl Reader {
+    pub fn new_reader(offset: Offset, path: PathBuf, max_bytes: MaxBytes) -> Option<Reader> {
+        let mut segments = Partition::scan(path, max_bytes).ok()?;
+        segments.reverse();  // largest -> smallest
+        let mut cursor: Option<SegmentMeta> = None;
+        loop {
+            let segment = match segments.pop() {
+                Some(seg) => seg,
+                None => break,
+            };
+            if offset < segment.base_offset { break };
+            cursor = Some(segment);
+        }
+
+        if let Some(active) = cursor {
+            return Some(Reader{
+                segments: segments,
+                active_segment: active,
+                max_bytes: max_bytes,
+                offset: offset,
+            });
+        }
+        None
+    }
+}
+
 
 
 #[cfg(test)]
@@ -182,6 +237,34 @@ mod tests {
 
         assert_eq!(partition.active_segment.newest_offset(), 88, "next offset is 88");
         assert_eq!(partition.segments.len(), 1, "One 'docketed' existing segment meta");
+    }
+
+    #[test]
+    fn it_finds_segment() {
+        let mut tmp = tempdir().unwrap().path().to_path_buf();
+        tmp.push("topic/");
+        fs::create_dir_all(&tmp).unwrap();
+        {
+            let mut path = tmp.clone();
+            path.push("00000000000000000019.log");
+            let _ = OpenOptions::new().create(true).write(true).open(&path).unwrap();
+            path.pop();
+            path.push("00000000000000000088.log");
+            let _ = OpenOptions::new().create(true).write(true).open(&path).unwrap();
+            path.pop();
+            path.push("00000000000000000134.log");
+            let _ = OpenOptions::new().create(true).write(true).open(&path).unwrap();
+            path.pop();
+            path.push("00000000000000000201.log");
+            let _ = OpenOptions::new().create(true).write(true).open(&path).unwrap();
+        }
+        let partition = Partition::load(&mut tmp, MaxBytes(64, 64)).unwrap();
+
+        assert!(partition.find_segment(10).is_none());
+        assert!(partition.find_segment(20).is_some());
+        assert!(partition.find_segment(140).is_some());
+        assert_eq!(partition.find_segment(88).unwrap().base_offset,  88);
+        assert_eq!(partition.find_segment(140).unwrap().base_offset,  134);
     }
 
     #[test]

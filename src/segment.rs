@@ -99,7 +99,7 @@ impl SegmentMeta {
         }
     }
 
-    pub fn open(&self) -> io::Result<(OpenSegment)> {
+    pub fn open(&self) -> io::Result<OpenSegment> {
         let log_writer = OpenOptions::new().create(true).write(true)
             .append(true).open(self.segment_path.clone())?;
         let log_reader = OpenOptions::new().read(true).open(self.segment_path.clone())?;
@@ -113,6 +113,10 @@ impl SegmentMeta {
             Some(seg) => seg.log_writer.metadata().unwrap().len(),
             None => 0,
         }
+    }
+
+    pub fn read_index_entry(&mut self, offset: Offset) -> io::Result<Entry> {
+        self.open()?.log_index.read_log_entry(offset)
     }
 
     pub fn write_index_entry(&mut self, entry: Entry) -> io::Result<()> {
@@ -141,7 +145,9 @@ impl Write for SegmentMeta {
 }
 
 impl Read for SegmentMeta {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> { self.open()?.log_reader.read(buf) }
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.open()?.log_reader.read(buf)
+    }
 }
 
 impl Seek for SegmentMeta {
