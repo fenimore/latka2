@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 use memmap::{MmapMut, MmapOptions};
 
-use crate::{Offset};
-use crate::entry::{Entry, RelativeEntry, ENTRY_WIDTH};
+use crate::partition::{Offset};
+use crate::partition::entry::{Entry, RelativeEntry, ENTRY_WIDTH};
 
 fn idx_name(base_offset: Offset) -> PathBuf {
     PathBuf::from(format!("{:0>20}.index", base_offset))

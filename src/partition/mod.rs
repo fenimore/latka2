@@ -1,20 +1,28 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_labels)]
-#![allow(unused_variables)]
+// #![allow(dead_code)]
+// #![allow(unused_imports)]
+// #![allow(unused_variables)]
+pub mod segment;
+pub mod index;
+pub mod message;
+pub mod entry;
+pub mod reader;
+
+pub type Offset = u64;
+
+// const TEN_MB: u64 = 1024 * 1024 * 1;
+// const DEFAULT_SEGMENT_MAX_BYTES: u64 = TEN_MB;
+// pconst DEFAULT_INDEX_MAX_BYTES: u64 = TEN_MB;
+
 use std::{io, fs};
-use std::fs::{OpenOptions, File};
+use std::fs::{OpenOptions};
 use std::io::prelude::*;
 use std::path::PathBuf;
 // use std::sync::{Arc, Mutex};
 use std::iter::FromIterator;
 
-use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
-
-use crate::Offset;
-use crate::message::{Message};
-use crate::entry::{Entry};
-use crate::segment::{OpenSegment, SegmentMeta, MaxBytes};
+use crate::partition::message::{Message};
+use crate::partition::entry::{Entry};
+use crate::partition::segment::{SegmentMeta, MaxBytes};
 
 
 pub struct Partition {

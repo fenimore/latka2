@@ -1,14 +1,10 @@
-// #![allow(dead_code)]
-// #![allow(unused_imports)]
-// #![allow(unused_variables)]
 use std::{io};
 use std::io::{Read, SeekFrom, Seek};
 use std::path::PathBuf;
-// use std::sync::{Arc, Mutex};
-
-use crate::{Offset};
+// use std::sync::{Arc, Mutex}; // TODO: ADD THESE :X
+use crate::partition::{Offset};
 use crate::partition::Partition;
-use crate::segment::{SegmentMeta, MaxBytes};
+use crate::partition::segment::{SegmentMeta, MaxBytes};
 
 
 pub struct Reader {

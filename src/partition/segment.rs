@@ -5,9 +5,9 @@ use std::io::{BufWriter, Write, Read, SeekFrom, Seek};
 use std::path::PathBuf;
 // use std::sync::{Arc, Mutex};
 
-use crate::{Offset};
-use crate::index::{Index};
-use crate::entry::{Entry};
+use crate::partition::{Offset};
+use crate::partition::index::{Index};
+use crate::partition::entry::{Entry};
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub struct MaxBytes(pub u64, pub u64);

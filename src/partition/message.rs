@@ -1,22 +1,12 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_labels)]
-#![allow(unused_variables)]
-use std::{io, fs};
+use std::{io};
 use std::fs::{OpenOptions, File};
 use std::io::prelude::*;
-use std::path::PathBuf;
-// use std::sync::{Arc, Mutex};
-use std::iter::FromIterator;
-use std::collections::BinaryHeap;
 
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 
-use crate::Offset;
-use crate::segment::MaxBytes;
+use crate::partition::Offset;
 
-const SIZE: u64 = 8;
-const MSG_HEADER_LEN: u64 = 12;
+// const MSG_HEADER_LEN: u64 = 12;
 
 pub struct Message {
     pub offset: Offset,

@@ -1,4 +1,4 @@
-use crate::{Offset};
+use crate::partition::{Offset};
 
 pub const ENTRY_WIDTH: u32 = 8;
 
