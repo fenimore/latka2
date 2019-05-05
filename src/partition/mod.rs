@@ -93,8 +93,6 @@ impl Partition {
     }
 
     fn split(&mut self) -> io::Result<()> {
-        let next_offset = self.active_segment.newest_offset();
-
         self.segments.push(self.active_segment.clone());
         self.active_segment = SegmentMeta::new(
             self.path.clone(),
@@ -113,7 +111,7 @@ impl Partition {
         let position = self.active_segment.current_position();
         let message = Message::new(next_offset, position as u32, message);
         let payload = message.to_vec()?;
-        let n = self.active_segment.write(&payload)?;
+        let _ = self.active_segment.write(&payload)?;
 
         let entry = Entry::new(next_offset, position);
         let _ = self.active_segment.write_index_entry(entry)?;
