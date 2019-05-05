@@ -89,6 +89,15 @@ mod tests {
     use super::*;
     use crate::partition::Partition;
 
+    fn write_partition(tmp: PathBuf, max_bytes: MaxBytes) -> bool {
+        // BAH: refactor this :X
+        let mut partition = Partition::create(String::from("topic"), &mut tmp.clone(), max_bytes).unwrap();
+        let _ = partition.append("YELLOW SUBMARINE".as_bytes()).unwrap();
+        let _ = partition.append("PURPLE PRESIDENT".as_bytes()).unwrap();
+        let _ = partition.append("PRECIOUS PENNIES".as_bytes()).unwrap();
+        true
+    }
+
     #[test]
     fn no_new_reader_for_empty_partition() {
         let mut tmp = tempdir().unwrap().path().to_path_buf();
@@ -103,10 +112,7 @@ mod tests {
     #[test]
     fn new_reader() {
         let mut tmp = tempdir().unwrap().path().to_path_buf();
-        let mut partition = Partition::create(String::from("topic"), &mut tmp.clone(), MaxBytes(128, 64)).unwrap();
-        let _ = partition.append("YELLOW SUBMARINE".as_bytes()).unwrap();
-        let _ = partition.append("PURPLE PRESIDENT".as_bytes()).unwrap();
-        let _ = partition.append("PRECIOUS PENNIES".as_bytes()).unwrap();
+        write_partition(tmp.clone(), MaxBytes(128, 64));
         tmp.push("topic/");
 
         let reader = Reader::new(0, tmp, MaxBytes(128, 64));
@@ -120,10 +126,7 @@ mod tests {
     #[test]
     fn it_can_read_from_one_segment() {
         let mut tmp = tempdir().unwrap().path().to_path_buf();
-        let mut partition = Partition::create(String::from("topic"), &mut tmp.clone(), MaxBytes(128, 64)).unwrap();
-        let _ = partition.append("YELLOW SUBMARINE".as_bytes()).unwrap();
-        let _ = partition.append("PURPLE PRESIDENT".as_bytes()).unwrap();
-        let _ = partition.append("PRECIOUS PENNIES".as_bytes()).unwrap();
+        write_partition(tmp.clone(), MaxBytes(128, 64));
         tmp.push("topic/");
 
         let mut reader = Reader::new(0, tmp, MaxBytes(128, 64)).unwrap();
@@ -139,39 +142,29 @@ mod tests {
     #[test]
     fn it_can_read_from_a_second_segment_in_same_buffer() {
         let mut tmp = tempdir().unwrap().path().to_path_buf();
-        let mut partition = Partition::create(String::from("topic"), &mut tmp.clone(), MaxBytes(24, 32)).unwrap();
-        let _ = partition.append("YELLOW SUBMARINE".as_bytes()).unwrap();
-        let _ = partition.append("PURPLE PRESIDENT".as_bytes()).unwrap();
-        let _ = partition.append("PRECIOUS PENNIES".as_bytes()).unwrap();
+        write_partition(tmp.clone(), MaxBytes(24, 32));
         tmp.push("topic/");
-        assert_eq!(partition.segments_len(), 2);
         let mut reader = Reader::new(0, tmp, MaxBytes(128, 64)).unwrap();
 
         let mut buf = [0_u8; 28];
         let n = reader.read(&mut buf).unwrap();
         assert_eq!(buf, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                          89, 69, 76, 76, 79, 87, 32, 83, 85, 66, 77, 65, 82, 73, 78, 69]);
-        assert_eq!(n, 28)
+        assert_eq!(n, 28);
     }
 
     #[test]
-    fn it_wont_block_forever() {
+    fn it_can_read_into_giant_buffer() {
         let mut tmp = tempdir().unwrap().path().to_path_buf();
-        let mut partition = Partition::create(String::from("topic"), &mut tmp.clone(), MaxBytes(6, 32)).unwrap();
-        let _ = partition.append("YELLOW SUBMARINE".as_bytes()).unwrap();
-        let _ = partition.append("PURPLE PRESIDENT".as_bytes()).unwrap();
-        let _ = partition.append("PRECIOUS PENNIES".as_bytes()).unwrap();
+        write_partition(tmp.clone(), MaxBytes(64, 32));
         tmp.push("topic/");
-        assert_eq!(partition.segments_len(), 2);
         let mut reader = Reader::new(0, tmp, MaxBytes(128, 64)).unwrap();
 
         let mut buf = [0_u8; 1024];
         let n = reader.read(&mut buf).unwrap();
-        //assert_eq!(buf, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        //89, 69, 76, 76, 79, 87, 32, 83, 85, 66, 77, 65, 82, 73, 78, 69]);
-            //println!("{:?}", String::from(buf));
-        assert_eq!(n, 28);
-        println!("{:?}", buf[200]);
-        println!("{}", buf.len());
+
+        assert_eq!(buf[27], 69, "E");
+        assert_eq!(buf.len(), 1024, "mostly empty buffer");
+        assert_eq!(n, 84, "84 bytes read ((16  + HEADER(12)) * 3)");
     }
 }
